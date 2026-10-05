@@ -28,7 +28,11 @@ func (m *Manager) Handler() http.Handler {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		snap, reason := m.Resume(req.RequestID, req.Token, req.Version, req.AtMs)
 		if reason != "" {
-			w.WriteHeader(http.StatusConflict)
+			if reason == "expired" {
+				w.WriteHeader(http.StatusGone)
+			} else {
+				w.WriteHeader(http.StatusConflict)
+			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"reason": reason})
 			return
 		}
