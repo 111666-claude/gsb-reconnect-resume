@@ -17,6 +17,7 @@ type Manager struct {
 	GraceMs int64
 
 	sessions []*Session
+	byToken  map[string]*Session
 	seen     map[string]Session
 	Scanned  int
 	Resumes  int
@@ -33,17 +34,16 @@ func (m *Manager) Open(player string, atMs int64) Session {
 		LastMs:  atMs,
 	}
 	m.sessions = append(m.sessions, s)
+	if m.byToken == nil {
+		m.byToken = map[string]*Session{}
+	}
+	m.byToken[s.Token] = s
 	return *s
 }
 
 func (m *Manager) find(token string) *Session {
-	for _, s := range m.sessions {
-		m.Scanned++
-		if s.Token == token {
-			return s
-		}
-	}
-	return nil
+	m.Scanned++
+	return m.byToken[token]
 }
 
 // Resume 用令牌续局，返回会话快照与拒绝原因。
@@ -51,10 +51,21 @@ func (m *Manager) Resume(requestID, token string, version int, atMs int64) (Sess
 	if m.seen == nil {
 		m.seen = map[string]Session{}
 	}
+	if snap, ok := m.seen[requestID]; ok {
+		return snap, ""
+	}
 	s := m.find(token)
 	if s == nil {
 		m.Rejected++
 		return Session{}, "unknown"
+	}
+	if atMs-s.LastMs > m.GraceMs {
+		m.Rejected++
+		return Session{}, "expired"
+	}
+	if version != s.Version {
+		m.Rejected++
+		return Session{}, "stale"
 	}
 	m.Resumes++
 	s.Version++
